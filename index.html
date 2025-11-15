@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ocean</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background-color: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-family: sans-serif;
+  }
+  h1 {
+    font-size: 1rem;
+    opacity: 0.6;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<h1>sound is playing...</h1>
+
+<script>
+// ======== 設定 =========
+const FILE = "ocean.wav";     // 音源ファイル名
+const FADE = 3;               // クロスフェード時間（秒）
+// ======================
+
+// Web Audio API
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+let buffer = null;
+
+// 2つのプレイヤーを用意（AとBを交互に使う）
+let current = null;
+let next = null;
+
+// バッファ読み込み
+async function loadSound() {
+  const res = await fetch(FILE);
+  const arr = await res.arrayBuffer();
+  buffer = await audioCtx.decodeAudioData(arr);
+}
+
+// プレイヤー生成
+function createPlayer(gainStart) {
+  const source = audioCtx.createBufferSource();
+  const gain = audioCtx.createGain();
+  source.buffer = buffer;
+  gain.gain.value = gainStart;
+  source.connect(gain).connect(audioCtx.destination);
+  return { source, gain };
+}
+
+function startLoop() {
+  const duration = buffer.duration;
+
+  // A と B を初期化
+  current = createPlayer(1);  // 最初に鳴る
+  next = createPlayer(0);     // 後でフェードイン
+
+  const t0 = audioCtx.currentTime;
+
+  // 最初の再生
+  current.source.start(t0);
+
+  // 次のループを予約
+  scheduleNext(t0, duration);
+}
+
+function scheduleNext(startTime, duration) {
+  const fadeStart = startTime + duration - FADE; // クロスフェード開始時間
+
+  // 次のプレイヤーを start
+  next.source.start(fadeStart);
+
+  // フェードイン / フェードアウト
+  next.gain.setValueAtTime(0, fadeStart);
+  next.gain.linearRampToValueAtTime(1, fadeStart + FADE);
+
+  current.gain.setValueAtTime(1, fadeStart);
+  current.gain.linearRampToValueAtTime(0, fadeStart + FADE);
+
+  // A/B を入れ替えて無限ループ
+  const newStart = startTime + duration;
+
+  setTimeout(() => {
+    const old = current;
+    current = next;
+    next = createPlayer(0);
+    scheduleNext(newStart, duration);
+  }, (duration - FADE) * 1000);
+}
+
+// スマホ対策：タップ開始
+document.body.addEventListener("click", async () => {
+  await audioCtx.resume();
+  if (!buffer) {
+    await loadSound();
+    startLoop();
+  }
+}, { once: true });
+
+</script>
+
+</body>
+</html>
+
